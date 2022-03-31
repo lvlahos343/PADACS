@@ -1,0 +1,11 @@
+name: padacs_vis
+title:
+username:
+account: lukas-vlahos
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 5315244
+bundleId: 5363814
+url: https://lukas-vlahos.shinyapps.io/padacs_vis/
+when: 1639347177.03718
+lastSyncTime: 1639347177.03718
