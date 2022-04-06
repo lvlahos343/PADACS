@@ -34,14 +34,14 @@ ui <- fluidPage(
                sidebarPanel(
                  # dataset input
                  selectInput('bulkData', 'Dataset', choices = unique(bulk.dataset.table$Dataset)),
+                 # data modality
+                 selectInput('bulkType', 'Select data modality:', choices = NULL),
                  # phenotype
                  selectInput('bulkPheno', 'Phenotype', choices = NULL),
                  # comparison
                  selectInput('bulkComp', 'Comparison', choices = NULL),
-                 # data modality
-                 radioButtons('bulkType', 'Select data modality:', c('Gene Expression', 'Protein Activity')),
                  # plots to generate
-                 checkboxGroupInput('bulkPlots', "What plots would you like to view?", bulk.plot.choices),
+                 #checkboxGroupInput('bulkPlots', "What plots would you like to view?", bulk.plot.choices),
                  # gene to plot
                  textInput('bulkGene', label = 'Choose a gene to display.', value = '', placeholder = NULL),
                  # action button to plot
@@ -63,14 +63,14 @@ ui <- fluidPage(
                sidebarPanel(
                  # dataset input
                  selectInput('scData', 'Dataset', choices = unique(sc.dataset.table$Dataset)),
+                 # data modality
+                 selectInput('scType', 'Data Modality', choices = NULL),
                  # comparison input
                  selectInput('scComp', 'Comparison', choices = NULL),
                  # phenotype input
                  selectInput('scPheno', 'Phenotype', choices = NULL),
-                 # data modality
-                 radioButtons('scType', 'Select data modality:', c('Gene Expression', 'Protein Activity')),
                  # plots to generate
-                 checkboxGroupInput('scPlots', "What plots would you like to view?", plot.choices),
+                 #checkboxGroupInput('scPlots', "What plots would you like to view?", plot.choices),
                  # gene to plot
                  textInput('scGene', label = 'Choose a gene to display.', value = '', placeholder = NULL),
                  # action button to plot
@@ -84,12 +84,12 @@ ui <- fluidPage(
                  plotOutput("scDotPlot", height = '3in'),
                )
              )
-    ),
+    )
     
     # citation panel
-    tabPanel('Citation and Contact',
-             includeMarkdown('Data/citation-contact-tab.rmd')
-    )
+    #tabPanel('Citation and Contact',
+    #         includeMarkdown('Data/citation-contact-tab.rmd')
+    #)
   )
 )
 
@@ -97,20 +97,31 @@ ui <- fluidPage(
 server <- function(input, output) {
   ## sc: reactive input functions
   ###############
-  scCompInput <- reactive({
+  scTypeInput <- reactive({
     filter(sc.dataset.table, Dataset == input$scData)
   })
-  observeEvent(scCompInput(), {
-    choices <- unique(scCompInput()$Comparison)
-    updateSelectInput(inputId = "scComp", choices = choices) 
+  observeEvent(scTypeInput(), {
+    choices <- unique(scTypeInput()$Modality)
+    updateSelectInput(inputId = "scType", choices = choices)
   })
   
   scPhenoInput <- reactive({
-    filter(sc.dataset.table, Comparison == input$scComp, Dataset == input$scData)
+    filter(sc.dataset.table, Dataset == input$scData, 
+           Modality == input$scType)
   })
   observeEvent(scPhenoInput(), {
     choices <- unique(scPhenoInput()$Phenotype)
     updateSelectInput(inputId = "scPheno", choices = choices) 
+  })
+  
+  scCompInput <- reactive({
+    filter(sc.dataset.table, Dataset == input$scData, 
+           Modality == input$scType,
+           Phenotype == input$scPheno)
+  })
+  observeEvent(scCompInput(), {
+    choices <- unique(scCompInput()$Comparison)
+    updateSelectInput(inputId = "scComp", choices = choices) 
   })
   ###############
   
@@ -177,27 +188,46 @@ server <- function(input, output) {
       # load densemap
       gexp.dmap <- readRDS('Data/lin/lin_densmap.rds')
     } else if (input$scData == 'Tuveson') {
-      dge.file <- 'Data/tuveson/tuveson_'
-      # prepare expression vector
-      gexp.cpm <- readRDS('Data/tuveson/tuveson_cpm.rds')
-      gexp.vec <- gexp.cpm[input$scGene,]
-      rm(gexp.cpm)
-      # load metadata
-      gexp.meta <- readRDS('Data/tuveson/tuveson_metadata.rds')
-      # load densemap
-      gexp.dmap <- readRDS('Data/tuveson/tuveson_densmap.rds')
+      if (input$scType == 'Protein Activity') {
+        pact.mat <- readRDS('Data/tuveson/tuveson_pact.rds')
+        pact.vec <- pact.mat[input$scGene,]
+        rm(pact.mat)
+        # load metadata 
+        pact.meta <- readRDS('Data/tuveson/tuveson_metadata.rds')
+        # load densemap
+        pact.dmap <- readRDS('Data/tuveson/tuveson_pact_dmap.rds')
+        dpa.obj <- readRDS('Data/tuveson/tuveson_Tumor_Subtype-dpa.rds')
+      } else {
+        dge.file <- 'Data/tuveson/tuveson_'
+        # prepare expression vector
+        gexp.cpm <- readRDS('Data/tuveson/tuveson_cpm.rds')
+        gexp.vec <- gexp.cpm[input$scGene,]
+        rm(gexp.cpm)
+        # load metadata
+        gexp.meta <- readRDS('Data/tuveson/tuveson_metadata.rds')
+        # load densemap
+        gexp.dmap <- readRDS('Data/tuveson/tuveson_densmap.rds')
+      }
     }
     
-    # load dge
-    dge.file <- paste(dge.file, gsub(' ', '_', input$scComp), '-dge.rds', sep = '')
-    dge.obj <- readRDS(dge.file)
-    
-    # prepare data list and return
-    scDataList <- list('gexp.vec' = gexp.vec,
-                       'gexp.meta' = gexp.meta,
-                       'gexp.dmap' = gexp.dmap,
-                       'dge' = dge.obj,
-                       'plot.type' = plot.type)
+    if (input$scType == 'Protein Activity') {
+      scDataList <- list('gexp.vec' = pact.vec,
+                         'gexp.meta' = pact.meta,
+                         'gexp.dmap' = pact.dmap,
+                         'dge' = dpa.obj,
+                         'plot.type' = plot.type)
+    } else {
+      # load dge
+      dge.file <- paste(dge.file, gsub(' ', '_', input$scComp), '-dge.rds', sep = '')
+      dge.obj <- readRDS(dge.file)
+      
+      # prepare data list and return
+      scDataList <- list('gexp.vec' = gexp.vec,
+                         'gexp.meta' = gexp.meta,
+                         'gexp.dmap' = gexp.dmap,
+                         'dge' = dge.obj,
+                         'plot.type' = plot.type)
+    }
     return(scDataList)
   })
   
@@ -220,15 +250,20 @@ server <- function(input, output) {
       scale_color_discrete(name = input$scComp)
     exp.scatter <- ggplot(plot.df, aes(DMAP1, DMAP2)) +
       geom_point(aes(color = Expression)) + 
-      labs(x = 'DMAP1', y = 'DMAP2', title = 'Scaled Expression') +
-      scale_colour_gradient2(low = 'forestgreen', mid = 'darkgrey', high = 'purple')
+      labs(x = 'DMAP1', y = 'DMAP2')
+    if (input$scType == 'Gene Expression') {
+      exp.scatter <- exp.scatter + scale_colour_gradient2(low = 'forestgreen', mid = 'darkgrey', high = 'purple', name = 'Expression') +
+        ggtitle('Scaled Expression') 
+    } else if (input$scType == 'Protein Activity') {
+      exp.scatter <- exp.scatter + scale_colour_gradient2(low = 'blue', mid = 'darkgrey', high = 'red', name = 'Activity') +
+        ggtitle('Protein Activity') 
+    }
     return(ggarrange(plotlist = list(comp.scatter, exp.scatter),
                      nrow = 1, ncol = 2))
   })
   
   output$scViolin <- renderPlot({
     scData <- scPlotData()
-    print(scData$plot.type)
     if (scData$plot.type == 1) {
       # process data
       comp.vec <- scData$gexp.meta[, input$scComp]
@@ -240,14 +275,18 @@ server <- function(input, output) {
       # generate plot
       violin.plot <- ggplot(plot.df, aes(x = Meta, y = Expression)) +
         geom_violin(aes(fill = Meta), color = 'black') +
-        ggtitle(paste(input$scGene, ': Group Expression', sep = '')) + 
         xlab(input$scComp) + ylab('Log2 CPM') + 
         theme(axis.text.x = element_text(angle = 45, hjust = 1),
               legend.title = element_blank())
       
+      if (input$scType == 'Protein Activity') {
+        violin.plot <- violin.plot + ggtitle(paste(input$scGene, ': Group Activity', sep = ''))
+      } else {
+        violin.plot <- violin.plot + ggtitle(paste(input$scGene, ': Group Expression', sep = ''))
+      }
+      
       return(violin.plot)
     } else if (scData$plot.type == 2) {
-      print('plot.type 2')
       # process data
       compartment.vec <- scData$gexp.meta[, 'Compartment']
       names(compartment.vec) <- rownames(scData$gexp.meta)
@@ -258,8 +297,6 @@ server <- function(input, output) {
       plot.df <- data.frame('Expression' = scData$gexp.vec[use.samps],
                             'Meta' = as.factor(comp.vec[use.samps]),
                             'Compartment' = as.factor(compartment.vec[use.samps]))
-      print(head(compartment.vec))
-      print(head(plot.df))
       # generate plot
       violin.plot <- ggplot(plot.df, aes(x = Meta, y = Expression)) +
         geom_violin(aes(fill = Compartment), color = 'black') +
@@ -297,20 +334,31 @@ server <- function(input, output) {
   
   ### bulk: reactive input functions
   ###############
-  bulkCompInput <- reactive({
-    filter(bulk.dataset.table, Phenotype == input$bulkPheno, Dataset == input$bulkData)
+  bulkTypeInput <- reactive({
+    filter(bulk.dataset.table, Dataset == input$bulkData)
   })
-  observeEvent(bulkCompInput(), {
-    choices <- unique(bulkCompInput()$Comparison)
-    updateSelectInput(inputId = "bulkComp", choices = choices) 
+  observeEvent(bulkTypeInput(), {
+    choices <- unique(bulkTypeInput()$Modality)
+    updateSelectInput(inputId = "bulkType", choices = choices)
   })
   
   bulkPhenoInput <- reactive({
-    filter(bulk.dataset.table, Dataset == input$bulkData)
+    filter(bulk.dataset.table, Dataset == input$bulkData, 
+           Modality == input$bulkType)
   })
   observeEvent(bulkPhenoInput(), {
     choices <- unique(bulkPhenoInput()$Phenotype)
     updateSelectInput(inputId = "bulkPheno", choices = choices) 
+  })
+  
+  bulkCompInput <- reactive({
+    filter(bulk.dataset.table, Dataset == input$bulkData, 
+           Modality == input$bulkType,
+           Phenotype == input$bulkPheno)
+  })
+  observeEvent(bulkCompInput(), {
+    choices <- unique(bulkCompInput()$Comparison)
+    updateSelectInput(inputId = "bulkComp", choices = choices) 
   })
   ###############
   
@@ -359,9 +407,6 @@ server <- function(input, output) {
       gexp.dge <- readRDS('Data/unc/unc_dge.rds')
     }
     
-    print(head(gexp.vec))
-    print(head(gexp.meta))
-    
     # prepare data list and return
     bulkDataList <- list('gexp.vec' = gexp.vec,
                          'gexp.meta' = gexp.meta,
@@ -373,7 +418,7 @@ server <- function(input, output) {
     bulkData <- bulkPlotData()
     
     # process data
-    comp.vec <- bulkData$gexp.meta[, input$bulkComp]
+    comp.vec <- isolate(bulkData$gexp.meta[, input$bulkComp])
     names(comp.vec) <- rownames(bulkData$gexp.meta)
     use.samps <- names(comp.vec)[which(!is.na(comp.vec))]
     
@@ -393,7 +438,6 @@ server <- function(input, output) {
   
   output$bulkDot <- renderPlot({
     bulkData <- bulkPlotData()
-    print(names(bulkData$gexp.dge))
     
     # extract data from dge object
     dge.gene.p <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
@@ -407,7 +451,6 @@ server <- function(input, output) {
                           'rbsc' = dge.gene.rbs,
                           'level' = names(dge.gene.p),
                           'gene' = rep(input$bulkGene, length(dge.gene.p)))
-    print(head(plot.df))
     # generate plot
     dot.plot <- ggplot(plot.df, aes(level, gene)) +
       geom_point(aes(color = rbsc, size = p.val)) + 
@@ -451,7 +494,6 @@ server <- function(input, output) {
                       legend = 'right')
     return(survival.plot)
   })
-  
   ###############
 }
 
