@@ -7,7 +7,7 @@ library(dplyr)
 library(Matrix)
 library(survival)
 library(survminer)
-setwd('C://Users/lvlah/linux/ac_lab/olive_shiny-app/padacs_vis/')
+setwd('C://Users/lvlah/linux/ac_lab/PADACS/')
 
 ## load input choices
 sc.dataset.table <- read.csv('Data/sc_comp-table.csv', header = TRUE)
@@ -34,10 +34,10 @@ ui <- fluidPage(
                sidebarPanel(
                  # dataset input
                  selectInput('bulkData', 'Dataset', choices = unique(bulk.dataset.table$Dataset)),
-                 # comparison
-                 selectInput('bulkComp', 'Dataset', choices = NULL),
                  # phenotype
                  selectInput('bulkPheno', 'Phenotype', choices = NULL),
+                 # comparison
+                 selectInput('bulkComp', 'Comparison', choices = NULL),
                  # data modality
                  radioButtons('bulkType', 'Select data modality:', c('Gene Expression', 'Protein Activity')),
                  # plots to generate
@@ -48,7 +48,9 @@ ui <- fluidPage(
                  actionButton('bulkPlot', label = 'Plot')
                ),
                mainPanel(
-                 plotOutput("bulkViolin", height = '3in'),
+                 plotOutput("bulkBox", height = '3in'),
+                 br(),
+                 plotOutput("bulkDot", height = '3in'),
                  br(),
                  plotOutput("bulkSurvival", height = '3.5in'),
                )
@@ -296,7 +298,7 @@ server <- function(input, output) {
   ### bulk: reactive input functions
   ###############
   bulkCompInput <- reactive({
-    filter(bulk.dataset.table, Dataset == input$bulkData)
+    filter(bulk.dataset.table, Phenotype == input$bulkPheno, Dataset == input$bulkData)
   })
   observeEvent(bulkCompInput(), {
     choices <- unique(bulkCompInput()$Comparison)
@@ -304,7 +306,7 @@ server <- function(input, output) {
   })
   
   bulkPhenoInput <- reactive({
-    filter(bulk.dataset.table, Comparison == input$bulkComp, Dataset == input$bulkData)
+    filter(bulk.dataset.table, Dataset == input$bulkData)
   })
   observeEvent(bulkPhenoInput(), {
     choices <- unique(bulkPhenoInput()$Phenotype)
@@ -323,6 +325,8 @@ server <- function(input, output) {
         rm(gexp.cpm)
         # load metadata
         gexp.meta <- readRDS('Data/cumc_lcm/cumc-lcm_epi_meta.rds')
+        # load dge
+        gexp.dge <- readRDS('Data/cumc_lcm/cumc-lcm_epi_dge.rds')
         
       } else if (input$bulkPheno == "Stroma") {
         # prepare expression vector
@@ -331,17 +335,41 @@ server <- function(input, output) {
         rm(gexp.cpm)
         # load metadata
         gexp.meta <- readRDS('Data/cumc_lcm/cumc-lcm_stroma_meta.rds')
+        # load dge
+        gexp.dge <- readRDS('Data/cumc_lcm/cumc-lcm_stroma_dge.rds')
         
       }
+    } else if (input$bulkData == "TCGA") {
+      # prepare expression vector
+      gexp.cpm <- readRDS('Data/tcga/tcga_tpm.rds')
+      gexp.vec <- gexp.cpm[input$bulkGene,]
+      rm(gexp.cpm)
+      # load metadata
+      gexp.meta <- readRDS('Data/tcga/tcga_meta.rds')
+      # load dge
+      gexp.dge <- readRDS('Data/tcga/tcga_dge.rds')
+    } else if (input$bulkData == "UNC") {
+      # prepare expression vector
+      gexp.cpm <- readRDS('Data/unc/unc_tpm.rds')
+      gexp.vec <- gexp.cpm[input$bulkGene,]
+      rm(gexp.cpm)
+      # load metadata
+      gexp.meta <- readRDS('Data/unc/unc_meta.rds')
+      # load dge
+      gexp.dge <- readRDS('Data/unc/unc_dge.rds')
     }
+    
+    print(head(gexp.vec))
+    print(head(gexp.meta))
     
     # prepare data list and return
     bulkDataList <- list('gexp.vec' = gexp.vec,
-                         'gexp.meta' = gexp.meta)
+                         'gexp.meta' = gexp.meta,
+                         'gexp.dge' = gexp.dge)
     return(bulkDataList)
   })
   
-  output$bulkViolin <- renderPlot({
+  output$bulkBox <- renderPlot({
     bulkData <- bulkPlotData()
     
     # process data
@@ -353,38 +381,66 @@ server <- function(input, output) {
     plot.df <- data.frame('Expression' = bulkData$gexp.vec[use.samps],
                           'Meta' = as.factor(comp.vec[use.samps]))
     # generate plot
-    violin.plot <- ggplot(plot.df, aes(x = Meta, y = Expression)) +
-      geom_violin(aes(fill = Meta), color = 'black') +
+    box.plot <- ggplot(plot.df, aes(x = Meta, y = Expression)) +
+      geom_boxplot(aes(fill = Meta), color = 'black') +
       ggtitle(paste(input$bulkGene, ': Group Expression', sep = '')) + 
       xlab(input$bulkComp) + ylab('Log2 TPM') + 
       theme(axis.text.x = element_text(angle = 45, hjust = 1),
             legend.title = element_blank())
     
-    return(violin.plot)
+    return(box.plot)
+  })
+  
+  output$bulkDot <- renderPlot({
+    bulkData <- bulkPlotData()
+    print(names(bulkData$gexp.dge))
+    
+    # extract data from dge object
+    dge.gene.p <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+      x[input$bulkGene, 'p.val']
+    })
+    dge.gene.rbs <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+      x[input$bulkGene, 'rbs.cor']
+    })
+    # creat plot df
+    plot.df <- data.frame('p.val' = dge.gene.p,
+                          'rbsc' = dge.gene.rbs,
+                          'level' = names(dge.gene.p),
+                          'gene' = rep(input$bulkGene, length(dge.gene.p)))
+    print(head(plot.df))
+    # generate plot
+    dot.plot <- ggplot(plot.df, aes(level, gene)) +
+      geom_point(aes(color = rbsc, size = p.val)) + 
+      scale_size(trans = 'reverse') + 
+      scale_color_gradient(low = 'blue', high = 'red') +
+      xlab(input$bulkComp) + ylab(input$bulkGene) + 
+      theme(axis.text.x = element_text(angle=45, hjust=1))
+    
+    return(dot.plot)
   })
   
   output$bulkSurvival <- renderPlot({
     bulkData <- bulkPlotData()
     
+    # set label and meta data 
+    comp.name <- input$bulkComp
+    meta.mat <- bulkData$gexp.meta
     # process data
-    comp.vec <- bulkData$gexp.meta[, input$bulkComp]
-    names(comp.vec) <- rownames(bulkData$gexp.meta)
+    comp.vec <- meta.mat[, comp.name]
+    names(comp.vec) <- rownames(meta.mat)
     use.samps <- names(comp.vec)[which(!is.na(comp.vec))]
-    # make km model
-    km.df <- data.frame('time' = bulkData$gexp.meta[use.samps, 'Survival'])
-    comp.name <- 'Tumor_Grade'
-    km.df[[comp.name]] <- comp.vec[use.samps]
-    km.fit <- survfit(formula = Surv(time) ~ Tumor_Grade, data = km.df)
-    km.dif <- survdiff(Surv(time) ~ Tumor_Grade, data = km.df)
+    km.df <- data.frame('time' = meta.mat[use.samps, 'Survival'],
+                        'status' = as.numeric(meta.mat[use.samps, 'censor.status']),
+                        'var' = comp.vec[use.samps])
+    km.df <- km.df[complete.cases(km.df),]
+    # fit the model
+    km.fit <- survfit(formula = Surv(time, status) ~ var, data = km.df)
+    km.dif <- survdiff(Surv(time) ~ var, data = km.df)
     km.p <- round(pchisq(km.dif$chisq, df = 2, lower.tail = FALSE), 3)
-    print(km.p)
-    print(summary(km.fit))
-    print(comp.name)
-    print(head(km.df))
+    km.p <- format(km.p, scientific = TRUE, digits = 3)
     # plot
-    comp.title <- gsub('_', ' ', input$bulkComp)
-    legend.labs <- sort(unique(km.df[,2]))
-    print(comp.title)
+    comp.title <- gsub('_', ' ', comp.name)
+    legend.labs <- sapply(names(km.fit$strata), function(x) {strsplit(x, '=')[[1]][2]})
     survival.plot <- ggsurvplot(km.fit, data = km.df,
                                 legend.labs = legend.labs,
                                 legend.title = comp.title) +
@@ -393,7 +449,6 @@ server <- function(input, output) {
       theme_survminer(font.main = c(16, "plain", "black"),
                       font.submain = c(12, "plain", "black"),
                       legend = 'right')
-    print('made plot')
     return(survival.plot)
   })
   
