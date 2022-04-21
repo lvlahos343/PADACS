@@ -7,7 +7,7 @@ library(dplyr)
 library(Matrix)
 library(survival)
 library(survminer)
-setwd('C://Users/lvlah/linux/ac_lab/PADACS/')
+setwd('C://Users/Lukas Vlahos/OneDrive/ac_lab/PADACS/')
 
 ## load input choices
 sc.dataset.table <- read.csv('Data/sc_comp-table.csv', header = TRUE)
@@ -136,6 +136,7 @@ server <- function(input, output) {
       if (input$scPheno == 'Tumor') {
         # prepare expression vector
         gexp.cpm <- readRDS('Data/peng/peng_tumor_cpm.rds')
+        validate(need(input$scGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         gexp.vec <- gexp.cpm[input$scGene,]
         rm(gexp.cpm)
         # load metadata
@@ -149,6 +150,7 @@ server <- function(input, output) {
       } else if (input$scPheno == 'Normal') {
         # prepare expression vector
         gexp.cpm <- readRDS('Data/peng/peng_normal_cpm.rds')
+        validate(need(input$scGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         gexp.vec <- gexp.cpm[input$scGene,]
         rm(gexp.cpm)
         # load metadata
@@ -161,6 +163,7 @@ server <- function(input, output) {
       } else if (input$scPheno == 'Tumor vs. Normal') {
         # prepare expression vector
         gexp.cpm <- readRDS('Data/peng/peng_normal_cpm.rds')
+        validate(need(input$scGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         normal.vec <- gexp.cpm[input$scGene,]
         rm(gexp.cpm)
         gexp.cpm <- readRDS('Data/peng/peng_tumor_cpm.rds')
@@ -181,6 +184,7 @@ server <- function(input, output) {
       dge.file <- 'Data/lin/lin_'
       # prepare expression vector
       gexp.cpm <- readRDS('Data/lin/lin_cpm.rds')
+      validate(need(input$scGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
       gexp.vec <- gexp.cpm[input$scGene,]
       rm(gexp.cpm)
       # load metadata
@@ -190,6 +194,7 @@ server <- function(input, output) {
     } else if (input$scData == 'Tuveson') {
       if (input$scType == 'Protein Activity') {
         pact.mat <- readRDS('Data/tuveson/tuveson_pact.rds')
+        validate(need(input$scGene %in% rownames(pact.mat), "Selected protein is not present in this data."))
         pact.vec <- pact.mat[input$scGene,]
         rm(pact.mat)
         # load metadata 
@@ -201,6 +206,7 @@ server <- function(input, output) {
         dge.file <- 'Data/tuveson/tuveson_'
         # prepare expression vector
         gexp.cpm <- readRDS('Data/tuveson/tuveson_cpm.rds')
+        validate(need(input$scGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         gexp.vec <- gexp.cpm[input$scGene,]
         rm(gexp.cpm)
         # load metadata
@@ -231,7 +237,7 @@ server <- function(input, output) {
     return(scDataList)
   })
   
-  output$scScatter <- renderPlot({
+  output$scScatter <- bindEvent(renderPlot({
     scData <- scPlotData()
     # process data
     comp.vec <- scData$gexp.meta[, input$scComp]
@@ -260,9 +266,9 @@ server <- function(input, output) {
     }
     return(ggarrange(plotlist = list(comp.scatter, exp.scatter),
                      nrow = 1, ncol = 2))
-  })
+  }), scPlotData())
   
-  output$scViolin <- renderPlot({
+  output$scViolin <- bindEvent(renderPlot({
     scData <- scPlotData()
     if (scData$plot.type == 1) {
       # process data
@@ -307,9 +313,9 @@ server <- function(input, output) {
       
       return(violin.plot)
     }
-  })
+  }), scPlotData())
   
-  output$scDotPlot <- renderPlot({
+  output$scDotPlot <- bindEvent(renderPlot({
     scData <- scPlotData()
     # process data
     comp.vec <- scData$gexp.meta[, input$scComp]
@@ -329,7 +335,7 @@ server <- function(input, output) {
       theme(axis.text.x = element_text(angle=45, hjust=1))
     
     return(dot.plot)
-  })
+  }), scPlotData())
   ###############
   
   ### bulk: reactive input functions
@@ -369,6 +375,7 @@ server <- function(input, output) {
       if (input$bulkPheno == "Tumor") {
         # prepare expression vector
         gexp.cpm <- readRDS('Data/cumc_lcm/cumc-lcm_epi_tpm.rds')
+        validate(need(input$bulkGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         gexp.vec <- gexp.cpm[input$bulkGene,]
         rm(gexp.cpm)
         # load metadata
@@ -379,6 +386,7 @@ server <- function(input, output) {
       } else if (input$bulkPheno == "Stroma") {
         # prepare expression vector
         gexp.cpm <- readRDS('Data/cumc_lcm/cumc-lcm_stroma_tpm.rds')
+        validate(need(input$bulkGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
         gexp.vec <- gexp.cpm[input$bulkGene,]
         rm(gexp.cpm)
         # load metadata
@@ -390,6 +398,7 @@ server <- function(input, output) {
     } else if (input$bulkData == "TCGA") {
       # prepare expression vector
       gexp.cpm <- readRDS('Data/tcga/tcga_tpm.rds')
+      validate(need(input$bulkGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
       gexp.vec <- gexp.cpm[input$bulkGene,]
       rm(gexp.cpm)
       # load metadata
@@ -399,6 +408,7 @@ server <- function(input, output) {
     } else if (input$bulkData == "UNC") {
       # prepare expression vector
       gexp.cpm <- readRDS('Data/unc/unc_tpm.rds')
+      validate(need(input$bulkGene %in% rownames(gexp.cpm), "Selected gene is not present in this data."))
       gexp.vec <- gexp.cpm[input$bulkGene,]
       rm(gexp.cpm)
       # load metadata
@@ -414,7 +424,7 @@ server <- function(input, output) {
     return(bulkDataList)
   })
   
-  output$bulkBox <- renderPlot({
+  output$bulkBox <- bindEvent(renderPlot({
     bulkData <- bulkPlotData()
     
     # process data
@@ -434,9 +444,9 @@ server <- function(input, output) {
             legend.title = element_blank())
     
     return(box.plot)
-  })
+  }), bulkPlotData())
   
-  output$bulkDot <- renderPlot({
+  output$bulkDot <- bindEvent(renderPlot({
     bulkData <- bulkPlotData()
     
     # extract data from dge object
@@ -460,9 +470,9 @@ server <- function(input, output) {
       theme(axis.text.x = element_text(angle=45, hjust=1))
     
     return(dot.plot)
-  })
+  }), bulkPlotData())
   
-  output$bulkSurvival <- renderPlot({
+  output$bulkSurvival <- bindEvent(renderPlot({
     bulkData <- bulkPlotData()
     
     # set label and meta data 
@@ -493,7 +503,7 @@ server <- function(input, output) {
                       font.submain = c(12, "plain", "black"),
                       legend = 'right')
     return(survival.plot)
-  })
+  }), bulkPlotData())
   ###############
 }
 
