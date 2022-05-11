@@ -18,7 +18,7 @@ bulk.plot.choices <- c('Expression by Group', 'Differential Expression / Activit
 ## UI
 ui <- fluidPage(
   # webpage title
-  titlePanel('PADACS: Visualization of PDAC Gene Expression and Protein Activity'),
+  titlePanel('PADCAS: Visualization of PDAC Gene Expression and Protein Activity'),
   
   # create tabs
   tabsetPanel(
@@ -371,6 +371,7 @@ server <- function(input, output) {
   ### bulk: plots
   ###############
   bulkPlotData <- eventReactive(input$bulkPlot, {
+    plot.type <- 1
     if (input$bulkData == "CUMC LCM") {
       if (input$bulkPheno == "Tumor") {
         # prepare expression vector
@@ -403,8 +404,13 @@ server <- function(input, output) {
       rm(gexp.cpm)
       # load metadata
       gexp.meta <- readRDS('Data/tcga/tcga_meta.rds')
-      # load dge
-      gexp.dge <- readRDS('Data/tcga/tcga_dge.rds')
+      # load dge or NaRnEA
+      if (input$bulkType == 'Protein Activity') {
+        gexp.dge <- readRDS('Data/tcga/tcga_narnea.rds')
+        plot.type <- 2
+      } else {
+        gexp.dge <- readRDS('Data/tcga/tcga_dge.rds')
+      }
     } else if (input$bulkData == "UNC") {
       # prepare expression vector
       gexp.cpm <- readRDS('Data/unc/unc_tpm.rds')
@@ -414,13 +420,19 @@ server <- function(input, output) {
       # load metadata
       gexp.meta <- readRDS('Data/unc/unc_meta.rds')
       # load dge
-      gexp.dge <- readRDS('Data/unc/unc_dge.rds')
+      if (input$bulkType == 'Protein Activity') {
+        gexp.dge <- readRDS('Data/unc/unc_narnea.rds')
+        plot.type <- 2
+      } else {
+        gexp.dge <- readRDS('Data/unc/unc_dge.rds')
+      }
     }
     
     # prepare data list and return
     bulkDataList <- list('gexp.vec' = gexp.vec,
                          'gexp.meta' = gexp.meta,
-                         'gexp.dge' = gexp.dge)
+                         'gexp.dge' = gexp.dge,
+                         'plot.type' = plot.type)
     return(bulkDataList)
   })
   
@@ -449,27 +461,51 @@ server <- function(input, output) {
   output$bulkDot <- bindEvent(renderPlot({
     bulkData <- bulkPlotData()
     
-    # extract data from dge object
-    dge.gene.p <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
-      x[input$bulkGene, 'p.val']
-    })
-    dge.gene.rbs <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
-      x[input$bulkGene, 'rbs.cor']
-    })
-    # creat plot df
-    plot.df <- data.frame('p.val' = dge.gene.p,
-                          'rbsc' = dge.gene.rbs,
-                          'level' = names(dge.gene.p),
-                          'gene' = rep(input$bulkGene, length(dge.gene.p)))
-    # generate plot
-    dot.plot <- ggplot(plot.df, aes(level, gene)) +
-      geom_point(aes(color = rbsc, size = p.val)) + 
-      scale_size(trans = 'reverse') + 
-      scale_color_gradient(low = 'blue', high = 'red') +
-      xlab(input$bulkComp) + ylab(input$bulkGene) + 
-      theme(axis.text.x = element_text(angle=45, hjust=1))
-    
-    return(dot.plot)
+    if (bulkData$plot.type == 1) {
+      # extract data from dge object
+      dge.gene.p <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+        x[input$bulkGene, 'p.val']
+      })
+      dge.gene.rbs <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+        x[input$bulkGene, 'rbs.cor']
+      })
+      # creat plot df
+      plot.df <- data.frame('p.val' = dge.gene.p,
+                            'rbsc' = dge.gene.rbs,
+                            'level' = names(dge.gene.p),
+                            'gene' = rep(input$bulkGene, length(dge.gene.p)))
+      # generate plot
+      dot.plot <- ggplot(plot.df, aes(level, gene)) +
+        geom_point(aes(color = rbsc, size = p.val)) + 
+        scale_size(trans = 'reverse') + 
+        scale_color_gradient(low = 'blue', high = 'red') +
+        xlab(input$bulkComp) + ylab(input$bulkGene) + 
+        theme(axis.text.x = element_text(angle=45, hjust=1))
+      
+      return(dot.plot)
+    } else {
+      # extract data from dge object
+      dge.gene.p <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+        x[input$bulkGene, 'NES']
+      })
+      dge.gene.rbs <- sapply(bulkData$gexp.dge[[input$bulkComp]], function(x) {
+        x[input$bulkGene, 'PES']
+      })
+      # creat plot df
+      plot.df <- data.frame('NES' = abs(dge.gene.p),
+                            'PES' = dge.gene.rbs,
+                            'level' = names(dge.gene.p),
+                            'gene' = rep(input$bulkGene, length(dge.gene.p)))
+      # generate plot
+      dot.plot <- ggplot(plot.df, aes(level, gene)) +
+        geom_point(aes(color = PES, size = NES)) + 
+        scale_color_gradient(low = 'blue', high = 'red') +
+        xlab(input$bulkComp) + ylab(input$bulkGene) + 
+        theme(axis.text.x = element_text(angle=45, hjust=1))
+      
+      return(dot.plot)
+      
+    }
   }), bulkPlotData())
   
   output$bulkSurvival <- bindEvent(renderPlot({
